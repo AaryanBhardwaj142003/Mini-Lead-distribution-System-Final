@@ -1,0 +1,48 @@
+SUBMISSION NOTES & ARCHITECTURE EXPLANATION
+===========================================
+
+1. ALLOCATION ALGORITHM (Fairness & Rules)
+------------------------------------------
+The system distributes leads to EXACTLY 3 providers per lead. It performs this through a two-step deterministic process:
+
+Step A - Mandatory Providers:
+Based on the `Service Type`, the algorithm first pulls in the mandatory providers (e.g., Service 1 -> Provider 1). It checks if these providers are under their monthly quota limit (10). If they have capacity, they are assigned first.
+
+Step B - Fair Round-Robin Pool:
+To distribute the remaining slots (e.g., if 1 slot was filled by a mandatory provider, 2 slots remain), the system utilizes a pool of applicable providers for that service.
+- The system reads the "last_assigned_index" from a central system state document in the database.
+- It iterates through the pool array starting from `last_assigned_index + 1`.
+- It evaluates each candidate: Are they under quota? Have they already been assigned this lead?
+- Valid providers are selected, the remaining slot count drops, and the loop continues until exactly 3 providers are chosen (or the pool runs out).
+- The "last_assigned_index" is updated and written back to the database so the next lead distribution picks up exactly where the last one left off, ensuring perfect long-term fairness, regardless of server restarts.
+
+2. CONCURRENCY HANDLING
+-----------------------
+Handling simultaneous submissions (e.g., 10 leads arriving in the exact same millisecond) is a classic race condition issue. Without handling, 10 transactions might read that Provider 2 has 9 quota used, and all 10 assign the lead to Provider 2, bypassing the limit and pushing the quota to 19.
+
+This is managed using **Firestore Transactions (Optimistic Local Locking & Atomic Writes):**
+- When `submitLead()` fires, the entire allocation algorithm runs *inside* a `runTransaction` block.
+- The transaction reads the current quotas and the current round-robin index. 
+- If multiple submissions run concurrently, the database detects that the underlying data (like Quota counts or Round-Robin index) was modified by a parallel thread *while* the current thread was calculating.
+- The transaction automatically safely fails and instantly **reruns** the calculation with the fresh values. 
+- This guarantees that quotas are respected exactly, and exactly 3 providers are picked linearly, eliminating race conditions entirely.
+
+3. DATABASE UNIQUENESS & INTEGRITY
+----------------------------------
+To enforce that the same Phone Number cannot create another lead for the exact same Service, structural document mapping is used. Instead of generating a random Database ID for a Lead, the Lead document ID is explicitly formatted as `[phone_number]_[service_type]`. 
+Inside the transaction, we write:
+`const leadSnap = await transaction.get(leadRef(phone_service)); if (leadSnap.exists()) throw Error;`
+Because this occurs within the atomic transaction lock, even split-second duplicate spams from bots will be safely blocked exactly once.
+
+4. WEBHOOK IDEMPOTENCY ENSURANCE
+--------------------------------
+Simulating payment providers (like Stripe or Meta Ads webhook retries), idempotency is crucial so the system does not incorrectly reset quotas or add items multiple times if network glitches trigger the webhook multiple times.
+- Every incoming webhook must include a unique `event_id` or `idempotency_key`.
+- An `processed_webhooks` collection acts as a lock table.
+- Before executing the `reset_quota` logic, the system executes an atomic transaction attempting to read if the `idempotency_key` document exists.
+- If it exists, it aborts execution and returns successfully immediately (catching the retry).
+- If it doesn't, it processes the quota reset and immediately writes the `idx` into the `processed_webhooks` table. All done atomically.
+
+5. REAL-TIME CAPABILITIES
+-------------------------
+The Provider Dashboard uses Firebase Firestore's WebSocket implementation (`onSnapshot`). Unlike polling which consumes massive API requests or requires custom Server-Sent Events infrastructure, the React client opens a direct persistent connection. When the allocation transaction commits new data to the `leads` table tracking the array of assigned providers, the database pushes the delta packet instantly down to the Dashboard client within milliseconds without needing page reloads.

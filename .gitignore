@@ -18,6 +18,3 @@ npm-debug.log*
 # Editor
 .vscode/
 .idea/
-
-# AI Studio / Firebase config
-firebase-applet-config.json
