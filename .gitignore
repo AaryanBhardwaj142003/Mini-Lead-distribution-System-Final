@@ -1,0 +1,23 @@
+node_modules/
+build/
+dist/
+dist-ssr/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# Env
+.env*
+!.env.example
+
+# Editor
+.vscode/
+.idea/
+
+# AI Studio / Firebase config
+firebase-applet-config.json

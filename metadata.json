@@ -1,0 +1,6 @@
+{
+  "name": "Mini Lead distribution System",
+  "description": "A professional SaaS dashboard for automated lead distribution using Round Robin logic, featuring Admin and Agent portals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

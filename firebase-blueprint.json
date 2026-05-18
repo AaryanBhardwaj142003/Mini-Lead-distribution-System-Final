@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents an Agent or Admin in the system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "agent"] },
+        "lastAssigned": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Represents a potential client lead.",
+      "type": "object",
+      "properties": {
+        "clientName": { "type": "string" },
+        "contactInfo": { "type": "string" },
+        "status": { "type": "string", "enum": ["New", "Contacted", "Closed"] },
+        "assignedAgentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientName", "contactInfo", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles with roles and assignment info."
+    },
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Leads distributed among agents."
+    }
+  }
+}
